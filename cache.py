@@ -1,10 +1,7 @@
 from settings import *
 import os
 import pygame
-
-
-def get_rotation_arr(images, rotation):
-    return [pygame.transform.rotate(img, rotation) for img in images]
+from polygon import Polygon
 
 
 class Cache:
@@ -18,6 +15,10 @@ class Cache:
 
         for i in range(NUM_ANGLES + 1):
             rotation = i * ANGLE_VALUE
-            self.stacked_sprite_cache[name][rotation] = get_rotation_arr(layers, rotation)
+
+            rotated_arr = [pygame.transform.rotate(img, rotation) for img in layers]
+            polygon = Polygon(rotated_arr[0], (0, 0))
+
+            self.stacked_sprite_cache[name][rotation] = (rotated_arr, polygon)
 
         return self.stacked_sprite_cache[name]

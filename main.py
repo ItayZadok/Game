@@ -1,10 +1,12 @@
 import os
 import sys
 
+import pygame.image
+
 from camera import Camera
+from player import Player
 from settings import *
 from cache import Cache
-from level import Level
 from sprite import Sprite
 
 
@@ -26,27 +28,25 @@ class Game:
         self.display = pygame.Surface(P_RES)
         self.delta_time = 0.01
 
-        self.player = None  # for auto-completion
-        self.cache = Cache()
         self.obstacle_sprites = pygame.sprite.Group()
         self.visible_sprites = pygame.sprite.Group()
-        self.camera = Camera(self)
         self.clock = pygame.time.Clock()
-        self.level = Level(self)
 
-        self.cur_level = Sprite((0, 0), None, 'levels/level' + '3')
+        img = pygame.image.load('graphics/levels/level3.png')
+        pos = [img.get_size()[0]//2, img.get_size()[1]//2]
+
+        self.level = Sprite(pos, img)
+        self.player = Player('car2', [pos[0], pos[1]], 0, self, self.obstacle_sprites) # why is it all by reference?!
+
+        self.camera = Camera(self)
 
     def draw(self):
-
         self.player.update()
-
-        self.camera.draw(self.cur_level)
-        self.camera.custom_draw(self.player)
+        self.camera.custom_draw()
 
         self.display.fill(BG_COLOR)
 
     def update(self):
-
         pygame.display.update()
         self.delta_time = self.clock.tick()
         pygame.display.set_caption(f'{self.clock.get_fps(): .1f}')

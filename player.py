@@ -1,5 +1,7 @@
 import pygame
 import math
+
+from polygon import Polygon
 from stackedSprite import StackedSprite
 from settings import *
 
@@ -9,78 +11,13 @@ def distance(pos1, pos2):
     return math.sqrt((pos1[0] - pos2[0]) ** 2 + (pos1[1] - pos2[1]) ** 2)
 
 
-def line_line_collision(line1, line2):
-    """Check if two lines represented by their start and end points intersect."""
-
-    def orientation(p, q, r):
-        val = (q[1] - p[1]) * (r[0] - q[0]) - (q[0] - p[0]) * (r[1] - q[1])
-        if val == 0: return 0  # Collinear
-        return 1 if val > 0 else 2  # Clockwise or counterclockwise
-
-    def on_segment(p, q, r):
-        return max(p[0], r[0]) >= q[0] >= min(p[0], r[0]) and \
-               max(p[1], r[1]) >= q[1] >= min(p[1], r[1])
-
-    p1, q1 = line1
-    p2, q2 = line2
-
-    o1 = orientation(p1, q1, p2)
-    o2 = orientation(p1, q1, q2)
-    o3 = orientation(p2, q2, p1)
-    o4 = orientation(p2, q2, q1)
-
-    if o1 != o2 and o3 != o4:
-        # Lines are intersecting, calculate the intersection point
-        denominator = ((q1[1] - p1[1]) * (q2[0] - p2[0])) - ((q1[0] - p1[0]) * (q2[1] - p2[1]))
-        if denominator == 0:
-            # Lines are parallel or coincident, return None
-            return None
-        else:
-            numerator1 = ((p1[0] - p2[0]) * (q2[1] - p2[1])) - ((p1[1] - p2[1]) * (q2[0] - p2[0]))
-            t = numerator1 / denominator
-            intersection_point = [p1[0] + (t * (q1[0] - p1[0])), p1[1] + (t * (q1[1] - p1[1]))]
-            return intersection_point
-
-    return None  # No intersection
-
-
-def rect_line_collision(rect, line_pos):
-    """calculate if a collision occurs between a rect and a line"""
-
-    lines = [
-        (rect.topleft, rect.topright),
-        (rect.bottomleft, rect.bottomright),
-        (rect.topright, rect.bottomright),
-        (rect.topleft, rect.bottomleft),
-    ]
-
-    # instead of working with shitty built-in rect, we'll use our own!
-
-    min_distance = 100000
-    min_intersection = None
-
-    for line in lines:
-        intersection = line_line_collision(line_pos, line)
-
-        if intersection is not None:
-            d = distance(intersection, rect.center)
-            if d < min_distance:
-                min_distance = d
-                min_intersection = intersection
-
-    if min_intersection is not None:
-        add = (rect.centerx - min_intersection[0], rect.centery - min_intersection[1])
-        return rect.centerx + add[0], rect.centery + add[1]
-
-    return None
-
-
 class Player(StackedSprite):
     def __init__(self, name, pos, rotation, main, groups):
         super().__init__(name, pos, rotation, main, groups)
-        self.borders = [[(100, 5), (50, 150)]]
         self.delta_time = main.delta_time
         self.main = main
+
+        self.borders = LEVEL_BORDERS
 
         self.move_velocity = 0
         self.rotate_velocity = 0
@@ -95,7 +32,7 @@ class Player(StackedSprite):
         self.rotate_max_speed = 0.5
 
         self.dire = pygame.math.Vector2(0, 0)
-
+        self.rotation_offset = 0
     def detection(self):
         keys = pygame.key.get_pressed()
 
@@ -104,77 +41,64 @@ class Player(StackedSprite):
         self.dire.y = 0
 
         if keys[pygame.K_RIGHT]:
-            self.dire.x = -1
-        if keys[pygame.K_LEFT]:
             self.dire.x = 1
+        if keys[pygame.K_LEFT]:
+            self.dire.x = -1
         if keys[pygame.K_UP]:
             self.dire.y = -1
         if keys[pygame.K_DOWN]:
             self.dire.y = 1
 
-    def collisions(self):
-        rect_1 = self.rect.__copy__()
-        rect_2 = self.rect.__copy__()
-        rect_3 = self.rect.__copy__()
-        rect_4 = self.rect.__copy__()
+    def collision(self):
 
-        d1 = 0
-        d2 = 0
-        d3 = 0
-        d4 = 0
-
-        for sprite in self.main.obstacle_sprites:
-            if sprite is not self and sprite.rect.colliderect(self.rect):
-                rect_1.right = sprite.rect.left
-                d1 = distance(rect_1, self.rect)
-
-                rect_2.left = sprite.rect.right
-                d2 = distance(rect_2, self.rect)
-
-                rect_3.bottom = sprite.rect.top
-                d3 = distance(rect_3, self.rect)
-
-                rect_4.top = sprite.rect.bottom
-                d4 = distance(rect_4, self.rect)
-
-                break
-
-        d = min(d1, d2, d3, d4)
-
-        if d == 0:
-            return 0
-
-        if d == d1:
-            self.rect = rect_1
-        elif d == d2:
-            self.rect = rect_2
-        elif d == d3:
-            self.rect = rect_3
-        else:
-            self.rect = rect_4
-
-        #  to see the rects
-        '''
-        surf = pygame.Surface((self.rect.width, self.rect.height))
-        surf.fill('blue')
-        self.main.display.blit(surf, rect_1)
-        surf.fill('yellow')
-        self.main.display.blit(surf, rect_2)
-        surf.fill('green')
-        self.main.display.blit(surf, rect_3)
-        surf.fill('purple')
-        self.main.display.blit(surf, rect_4)
-        '''
-
-        self.pos[0] = self.rect.centerx
-        self.pos[1] = self.rect.centery
-
-    def new_collision(self):
         for line in self.borders:
-            pos = rect_line_collision(self.rect, line)
-            if pos is not None:
-                self.pos[0] = pos[0]
-                self.pos[1] = pos[1]
+
+            line_start = line[0]
+            line_end = line[1]
+            player_position = self.pos
+
+            line_vector = (line_end[0] - line_start[0], line_end[1] - line_start[1])
+
+            # Calculate vector from line start to player
+            player_to_start_vector = (player_position[0] - line_start[0], player_position[1] - line_start[1])
+
+            # Calculate dot product of the line vector and player-to-start vector
+            dot_product = line_vector[0] * player_to_start_vector[0] + line_vector[1] * player_to_start_vector[1]
+
+            # Calculate squared length of the line vector
+            line_length_squared = line_vector[0] ** 2 + line_vector[1] ** 2
+
+            # Calculate the parameter t for the projection of player_to_start_vector onto line_vector
+            t = max(0, min(1, dot_product / line_length_squared))
+
+            # Calculate the closest point on the line to the player
+            closest_point_on_line = (line_start[0] + t * line_vector[0], line_start[1] + t * line_vector[1])
+
+            # Calculate the vector from the closest point on the line to the player
+            closest_point_to_player_vector = (player_position[0] - closest_point_on_line[0],
+                                              player_position[1] - closest_point_on_line[1])
+
+            # Calculate the distance from the player to the closest point on the line
+            distance_to_line = (closest_point_to_player_vector[0] ** 2 + closest_point_to_player_vector[1] ** 2) ** 0.5
+
+            # If player is colliding with the line, move the player away from the line
+            if distance_to_line < 9:  # Adjust this threshold as needed
+                # Calculate the direction vector from the line to the player
+                move_direction = (player_position[0] - closest_point_on_line[0],
+                                  player_position[1] - closest_point_on_line[1])
+
+                # Normalize the move direction vector
+                move_direction_length = (move_direction[0] ** 2 + move_direction[1] ** 2) ** 0.5
+                move_direction = (move_direction[0] / move_direction_length,
+                                  move_direction[1] / move_direction_length)
+
+                # Move the player along the move direction to avoid collision
+                player_position = (
+                closest_point_on_line[0] + move_direction[0] * 9,  # Adjust this movement distance as needed
+                closest_point_on_line[1] + move_direction[1] * 9)
+
+            self.pos[0] = player_position[0]
+            self.pos[1] = player_position[1]
 
     def update_movement_and_rotation(self, linear_input, rotational_input):
 
@@ -186,18 +110,19 @@ class Player(StackedSprite):
         self.move_velocity = min(self.move_velocity, self.move_max_speed)
         self.rotate_velocity = min(self.rotate_velocity, self.rotate_max_speed)
 
-        self.rotation += self.rotate_velocity * self.delta_time
+        self.rotation += 360-self.rotate_velocity * self.delta_time
+        self.rotation %= 360
 
-        radians = math.radians(self.rotation)
+        fixed_rotation = (self.rotation // ANGLE_VALUE) * ANGLE_VALUE
+
+        radians = math.radians(fixed_rotation)
         dist = self.move_velocity * self.delta_time
 
         self.pos[0] += dist * math.sin(radians)
         self.pos[1] += dist * math.cos(radians)
 
-        # self.collisions()  # very inefficient
-
-        self.new_collision()
-        self.rect.center = self.pos
+        self.collision() # very not perfect
+        self.rect.set_position(self.pos)
 
         # Apply friction
         self.move_velocity *= self.move_deceleration
